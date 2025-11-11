@@ -1,0 +1,245 @@
+﻿services:
+  # ============================================
+  # Databases
+  # ============================================
+  
+  mongodb:
+    image: mongo:7.0
+    container_name: ecommerce-mongodb
+    restart: unless-stopped
+    ports:
+      - "27017:27017"
+    environment:
+      MONGO_INITDB_DATABASE: OrdersDatabase
+    volumes:
+      - mongodb_data:/data/db
+    networks:
+      - ecommerce-network
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  mysql:
+    image: mysql:8.0
+    container_name: ecommerce-mysql
+    restart: unless-stopped
+    ports:
+      - "3306:3306"
+    environment:
+      MYSQL_ROOT_PASSWORD: admin
+      MYSQL_DATABASE: ecommerceproductsdatabase
+    volumes:
+      - mysql_data:/var/lib/mysql
+    networks:
+      - ecommerce-network
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -p$${MYSQL_ROOT_PASSWORD} || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 30s
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: ecommerce-postgres
+    restart: unless-stopped
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: admin
+      POSTGRES_DB: ecommerce_user
+    volumes:
+      - postgres_data:/var/lib/postgresql/data          
+      - ./postgres-init:/docker-entrypoint-initdb.d
+    networks:
+      - ecommerce-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ============================================
+  # Message Broker
+  # ============================================
+  
+  rabbitmq:
+    image: rabbitmq:3.13-management-alpine
+    container_name: ecommerce-rabbitmq
+    restart: unless-stopped
+    ports:
+      - "5672:5672"   # AMQP port
+      - "15672:15672" # Management UI
+    environment:
+      RabbitMQ_HostName: rabbitmq
+      RabbitMQ_UserName: guest
+      RabbitMQ_Password: guest
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    networks:
+      - ecommerce-network
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ============================================
+  # API Gateway
+  # ============================================
+  
+  apigateway:
+    build:
+      context: .
+      dockerfile: eCommerce.APIGateway/eCommerce.APIGateway/Dockerfile
+    container_name: ecommerce-apigateway
+    restart: unless-stopped
+    ports:
+      - "7000:8080"  # HTTP - Main Gateway Port
+      - "7001:8081"  # HTTPS
+    environment:
+      ASPNETCORE_URLS: http://0.0.0.0:8080
+      ASPNETCORE_ENVIRONMENT: Development
+      ASPNETCORE_HTTP_PORTS: 8080
+      ASPNETCORE_HTTPS_PORTS: 8081
+    depends_on:
+      productservice:
+        condition: service_started
+      userservice:
+        condition: service_started
+      orderservice:
+        condition: service_started
+    networks:
+      - ecommerce-network
+
+  # ============================================
+  # Microservices
+  # ============================================
+  
+  userservice:
+    build:
+      context: .
+      dockerfile: eCommerce.UserService/eCommerce.UserService/Dockerfile
+    container_name: ecommerce-userservice
+    restart: unless-stopped
+    ports:
+      - "5001:8080"  # HTTP
+      - "5002:8081"  # HTTPS
+    environment:
+      ASPNETCORE_URLS: http://0.0.0.0:8080
+      ASPNETCORE_ENVIRONMENT: Development
+      ASPNETCORE_HTTP_PORTS: 8080
+      ASPNETCORE_HTTPS_PORTS: 8081
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_DATABASE: ecommerce_user
+      POSTGRES_USERNAME: postgres
+      POSTGRES_PASSWORD: admin
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - ecommerce-network
+    # Health check removed - services will start after dependencies are healthy
+    # You can add health endpoints to services and enable health checks later
+
+  productservice:
+    build:
+      context: .
+      dockerfile: eCommerce.ProductService/eCommerce.API/Dockerfile
+    container_name: ecommerce-productservice
+    restart: unless-stopped
+    ports:
+      - "5000:8080"  # HTTP
+      - "5003:8081"  # HTTPS
+    environment:
+      ASPNETCORE_URLS: http://0.0.0.0:8080
+      ASPNETCORE_ENVIRONMENT: Development
+      ASPNETCORE_HTTP_PORTS: 8080
+      ASPNETCORE_HTTPS_PORTS: 8081
+      MYSQL_HOST: mysql
+      MYSQL_PORT: 3306
+      MYSQL_DATABASE: ecommerceproductsdatabase
+      MYSQL_USER: root
+      MYSQL_PASSWORD: admin
+      RabbitMQ_HostName: rabbitmq
+      RabbitMQ_UserName: guest
+      RabbitMQ_Password: guest
+      RabbitMQ_Port: 5672
+      RabbitMQ_Exchange: product.exchange
+      RabbitMQ_RoutingKey: product.routingkey
+    depends_on:
+      mysql:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - ecommerce-network
+    # Health check removed - services will start after dependencies are healthy
+    # You can add health endpoints to services and enable health checks later
+
+  orderservice:
+    build:
+      context: .
+      dockerfile: eCommerce.OrderService/eCommerce.API/Dockerfile
+    container_name: ecommerce-orderservice
+    restart: unless-stopped
+    ports:
+      - "5004:8080"  # HTTP
+      - "5005:8081"  # HTTPS
+    environment:
+      ASPNETCORE_URLS: http://0.0.0.0:8080
+      ASPNETCORE_ENVIRONMENT: Development
+      ASPNETCORE_HTTP_PORTS: 8080
+      ASPNETCORE_HTTPS_PORTS: 8081
+      MONGODB_HOST: mongodb
+      MONGODB_PORT: 27017
+      MONGODB_DATABASE: OrdersDatabase
+      RabbitMQ_HostName: rabbitmq
+      RabbitMQ_UserName: guest
+      RabbitMQ_Password: guest
+      RabbitMQ_Port: 5672
+      RabbitMQ_Exchange: order.exchange
+      RabbitMQ_RoutingKey: order.routingkey
+      RabbitMQ_Products_Exchange: product.exchange
+      # Gateway URL for inter-service communication
+      GatewayBaseUrl: http://apigateway:8080
+    depends_on:
+      mongodb:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      productservice:
+        condition: service_started
+      userservice:
+        condition: service_started
+    networks:
+      - ecommerce-network
+    # Health check removed - services will start after dependencies are healthy
+    # You can add health endpoints to services and enable health checks later
+
+# ============================================
+# Volumes
+# ============================================
+
+volumes:
+  mongodb_data:
+    driver: local
+  mysql_data:
+    driver: local
+  postgres_data:
+    driver: local
+  rabbitmq_data:
+    driver: local
+
+# ============================================
+# Networks
+# ============================================
+
+networks:
+  ecommerce-network:
+    driver: bridge
+
