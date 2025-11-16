@@ -1,9 +1,4 @@
 <Solution>
-  <Folder Name="/eCommerce.OrderService/">
-    <Project Path="eCommerce.OrderService/eCommerce.Core/eCommerce.Core.csproj" />
-    <Project Path="eCommerce.OrderService/eCommerce.Domain/eCommerce.Domain.csproj" />
-    <Project Path="eCommerce.OrderService/eCommerce.OrderService/eCommerce.OrderService.csproj" />
-  </Folder>
   <Folder Name="/eCommerce.ProductService/">
     <Project Path="eCommerce.ProductService/eCommerce.Core/eCommerce.Core.csproj" />
     <Project Path="eCommerce.ProductService/eCommerce.Domain/eCommerce.Domain.csproj" />
@@ -17,4 +12,7 @@
     <Project Path="eCommerce.UserService/eCommerce.Domain/eCommerce.Domain.csproj" />
     <Project Path="eCommerce.UserService/eCommerce.UserService/eCommerce.UserService.csproj" />
   </Folder>
+  <Project Path="docker-compose.dcproj">
+    <Build />
+  </Project>
 </Solution>

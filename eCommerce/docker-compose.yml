@@ -1,0 +1,6 @@
+services:
+  ecommerce.productservice:
+    image: ${DOCKER_REGISTRY-}ecommerceproductservice
+    build:
+      context: .
+      dockerfile: eCommerce.ProductService/eCommerce.ProductService/Dockerfile

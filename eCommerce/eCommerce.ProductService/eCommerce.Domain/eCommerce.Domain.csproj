@@ -5,5 +5,14 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
   </PropertyGroup>
+	<ItemGroup>
+		<PackageReference Include="FluentResults" Version="4.0.0" />
 
+		<PackageReference Include="Microsoft.Extensions.Configuration.Abstractions" Version="9.0.10" />
+		<PackageReference Include="MySql.EntityFrameworkCore" Version="9.0.9" />
+	</ItemGroup>
+	<ItemGroup>
+	  <ProjectReference Include="..\..\eCommerce.Shared\eCommerce.Shared\eCommerce.Shared.csproj" />
+	</ItemGroup>
+	
 </Project>
