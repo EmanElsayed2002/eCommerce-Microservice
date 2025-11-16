@@ -1,0 +1,12 @@
+# Visual Studio
+.vs/
+*.user
+*.suo
+*.vscode/
+
+# Build outputs
+bin/
+obj/
+
+# Docker
+*.dockerignore

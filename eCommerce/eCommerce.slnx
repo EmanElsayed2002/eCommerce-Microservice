@@ -1,0 +1,20 @@
+<Solution>
+  <Folder Name="/eCommerce.OrderService/">
+    <Project Path="eCommerce.OrderService/eCommerce.Core/eCommerce.Core.csproj" />
+    <Project Path="eCommerce.OrderService/eCommerce.Domain/eCommerce.Domain.csproj" />
+    <Project Path="eCommerce.OrderService/eCommerce.OrderService/eCommerce.OrderService.csproj" />
+  </Folder>
+  <Folder Name="/eCommerce.ProductService/">
+    <Project Path="eCommerce.ProductService/eCommerce.Core/eCommerce.Core.csproj" />
+    <Project Path="eCommerce.ProductService/eCommerce.Domain/eCommerce.Domain.csproj" />
+    <Project Path="eCommerce.ProductService/eCommerce.ProductService/eCommerce.ProductService.csproj" />
+  </Folder>
+  <Folder Name="/eCommerce.Shared/">
+    <Project Path="eCommerce.Shared/eCommerce.Shared/eCommerce.Shared.csproj" />
+  </Folder>
+  <Folder Name="/eCommerce.UserService/">
+    <Project Path="eCommerce.UserService/eCommerce.Core/eCommerce.Core.csproj" />
+    <Project Path="eCommerce.UserService/eCommerce.Domain/eCommerce.Domain.csproj" />
+    <Project Path="eCommerce.UserService/eCommerce.UserService/eCommerce.UserService.csproj" />
+  </Folder>
+</Solution>
