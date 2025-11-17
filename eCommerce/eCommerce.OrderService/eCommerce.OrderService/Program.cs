@@ -1,3 +1,14 @@
+using eCommerce.BusinessLogicLayer;
+using eCommerce.BusinessLogicLayer.HttpClientt;
+using eCommerce.BusinessLogicLayer.Policies;
+using eCommerce.BusinessLogicLayer.Validator;
+using eCommerce.DataAccessLayer;
+
+using FluentValidation;
+using FluentValidation.AspNetCore;
+
+using Polly;
+
 var builder = WebApplication.CreateBuilder(args);
 
 // Add services to the container.
@@ -5,6 +16,48 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddControllers();
 // Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
 builder.Services.AddOpenApi();
+builder.Services.AddDataAccessLayer(builder.Configuration);
+builder.Services.AddBusinessLogicLayer(builder.Configuration);
+
+builder.Services.AddFluentValidationAutoValidation();
+builder.Services.AddValidatorsFromAssemblyContaining<OrderAddRequestValidator>();
+ConfigureHttpClientsWithPolicies(builder.Services, builder.Configuration);
+void ConfigureHttpClientsWithPolicies(IServiceCollection services, IConfiguration configuration)
+{
+    services.AddHttpClient<ProductsMicroserviceClient>((serviceProvider, client) =>
+    {
+        var gatewayUrl = Environment.GetEnvironmentVariable("GatewayBaseUrl")
+            ?? configuration["GatewayBaseUrl"]
+            ?? "http://apigateway:8080";
+        client.BaseAddress = new Uri(gatewayUrl);
+        client.Timeout = TimeSpan.FromSeconds(30);
+    })
+    .AddPolicyHandler((serviceProvider, request) =>
+    {
+        var policies = serviceProvider.GetRequiredService<IProductsMicroservicePolicies>();
+
+
+        return Policy.WrapAsync(
+            policies.GetBulkheadIsolationPolicy(),
+            policies.GetFallbackPolicy()
+        );
+    });
+
+    services.AddHttpClient<UsersMicroserviceClient>((serviceProvider, client) =>
+    {
+        var gatewayUrl = Environment.GetEnvironmentVariable("GatewayBaseUrl")
+            ?? configuration["GatewayBaseUrl"]
+            ?? "http://apigateway:8080";
+        client.BaseAddress = new Uri(gatewayUrl);
+        client.Timeout = TimeSpan.FromSeconds(30);
+    })
+    .AddPolicyHandler((serviceProvider, request) =>
+    {
+        var policies = serviceProvider.GetRequiredService<IUsersMicroservicePolicies>();
+
+        return policies.GetCombinedPolicy();
+    });
+}
 
 var app = builder.Build();
 
