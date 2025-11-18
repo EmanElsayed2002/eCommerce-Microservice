@@ -43,6 +43,7 @@ namespace eCommerce.BusinessLogicLayer.Mapper
                 OrderItems = order.OrderItems.Select(x => x.ToDo()).ToList(),
                 TotalBill = order.TotalBill,
                 
+                
             };
         }
 
@@ -54,7 +55,8 @@ namespace eCommerce.BusinessLogicLayer.Mapper
                 Quantity = request.Quantity,
                 UnitPrice = request.UnitPrice,
                 TotalPrice = request.TotalPrice,
-               
+               Category = request.Category,
+               ProductName = request.ProductName,
             };
         }
 

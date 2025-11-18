@@ -20,6 +20,12 @@ namespace eCommerce.DataAccessLayer.Entities
         [BsonRepresentation(MongoDB.Bson.BsonType.Double)]
         public decimal UnitPrice { get; set; }
 
+        [BsonRepresentation(MongoDB.Bson.BsonType.String)]
+        public string Category { get; set; }
+
+        [BsonRepresentation(MongoDB.Bson.BsonType.String)]
+        public string ProductName { get; set; }
+
         [BsonRepresentation(MongoDB.Bson.BsonType.Int32)]
         public int Quantity { get; set; }
 

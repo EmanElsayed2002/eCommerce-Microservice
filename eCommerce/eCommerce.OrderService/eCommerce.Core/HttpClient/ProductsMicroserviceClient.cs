@@ -18,6 +18,8 @@ using Microsoft.Extensions.Logging;
 
 using Polly.Bulkhead;
 
+using static eCommerce.BusinessLogicLayer.HttpClientt.UsersMicroserviceClient;
+
 namespace eCommerce.BusinessLogicLayer.HttpClientt
 {
     public class ProductsMicroserviceClient(HttpClient _httpClient, IDistributedCache cache , ILogger<ProductsMicroserviceClient>logger)
@@ -25,7 +27,19 @@ namespace eCommerce.BusinessLogicLayer.HttpClientt
         public record ApiResponse(ProductDTO Data,
              string Message
         );
-  
+
+        public class RootResponse
+        {
+         
+            public int StatusCode { get; set; }
+            public InnerValue Value { get; set; }
+        }
+
+        public class InnerValue
+        {
+            public ProductDTO Data { get; set; }
+            public string Message { get; set; }
+        }
 
 
 
@@ -46,7 +60,13 @@ namespace eCommerce.BusinessLogicLayer.HttpClientt
                 {
                     return Result.Fail("Can not make communication with product microservice");
                 }
-                var p = await response.Content.ReadFromJsonAsync<ApiResponse>();
+                var root = await response.Content.ReadFromJsonAsync<RootResponse>();
+
+                var p = new ApiResponse(
+                    Data: root.Value.Data,
+                    Message: root.Value.Message
+                );
+
                 var productJson = JsonSerializer.Serialize(p);
                 DistributedCacheEntryOptions options = new DistributedCacheEntryOptions().SetAbsoluteExpiration(TimeSpan.FromSeconds(300));
                 await cache.SetStringAsync(cacheKey, productJson, options);
@@ -57,7 +77,7 @@ namespace eCommerce.BusinessLogicLayer.HttpClientt
                 logger.LogError(ex, "Bulkhead isolation blocks the request since the request queue is full");
 
                 return new ApiResponse(
-                    Data: new ProductDTO(Guid.NewGuid() ,"Product1" , "Temporal Category" , 1.2  , 0 , ""),Message: "hello"
+                    Data: new ProductDTO(Guid.NewGuid() ,"Product1" , "Temporal Category" , 1.2m  , 0 , ""),Message: "hello"
                 );
             }
 

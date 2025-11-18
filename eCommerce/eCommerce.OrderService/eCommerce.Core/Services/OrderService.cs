@@ -4,6 +4,8 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
+using Amazon.Runtime.Internal.Util;
+
 using eCommerce.BusinessLogicLayer.DTOs;
 using eCommerce.BusinessLogicLayer.HttpClientt;
 using eCommerce.BusinessLogicLayer.Mapper;
@@ -17,11 +19,13 @@ using FluentResults;
 
 using FluentValidation;
 
+using Microsoft.Extensions.Logging;
+
 using MongoDB.Driver;
 
 namespace eCommerce.BusinessLogicLayer.Services
 {
-    public class OrderService(IValidator<OrderAddRequest> Orderaddvalidator ,IValidator<OrderItemAddRequest> orderItemAddValidator, IValidator<OrderUpdateRequest> orderUpdateValidator, IValidator<OrderItemUpdateRequest> orderItemUpdateValidator, IOrderRepository _repo , ProductsMicroserviceClient productsMicroserviceClient, UsersMicroserviceClient usersMicroserviceClient, IRabbitMqPublisher rabbitMqPublisher) : IOrderService
+    public class OrderService(IValidator<OrderAddRequest> Orderaddvalidator ,IValidator<OrderItemAddRequest> orderItemAddValidator, IValidator<OrderUpdateRequest> orderUpdateValidator, IValidator<OrderItemUpdateRequest> orderItemUpdateValidator, IOrderRepository _repo , ProductsMicroserviceClient productsMicroserviceClient, UsersMicroserviceClient usersMicroserviceClient, IRabbitMqPublisher rabbitMqPublisher , ILogger<OrderService>_logger) : IOrderService
     {
         public async Task<Result<OrderResponse>> AddOrder(OrderAddRequest request)
         {
@@ -62,11 +66,17 @@ namespace eCommerce.BusinessLogicLayer.Services
             // calculate total bill to save on order entity
             foreach (var order in orderInput.OrderItems)
             {
+               var p = products.FirstOrDefault(x => x.ProductID  == order.ProductID);
+                order.UnitPrice = p.UnitPrice;
+                order.Category = p.Category;
+                order.ProductName = p.ProductName;
                 order.TotalPrice = order.Quantity * order.UnitPrice;
-                
+                _logger.LogInformation($"{order.ProductID} = {order.TotalPrice} -> q {order.Quantity} - {order.UnitPrice}");
             }
             orderInput.TotalBill = orderInput.OrderItems.Sum(x => x.TotalPrice);
-            var res = await _repo.AddOrder(request.ToDo());
+            _logger.LogInformation($"{orderInput.TotalBill}---> bill");
+
+            var res = await _repo.AddOrder(orderInput);
             if (res.IsSuccess)
             {
                 // Publish order created event to RabbitMQ
@@ -85,7 +95,7 @@ namespace eCommerce.BusinessLogicLayer.Services
                 
                 await rabbitMqPublisher.Publish(headers, orderCreatedMessage);
                 
-                return Result.Ok(res.Value.ToDo() with { Email = user.Value.Data.Email , UserName = user.Value.Data.Name});
+                return Result.Ok(res.Value.ToDo() with { Email = user.Value.Data.Email , UserName = user.Value.Data.PersonName });
             }
             return Result.Fail(res.Errors);
         }
@@ -128,7 +138,7 @@ namespace eCommerce.BusinessLogicLayer.Services
             var orderResponse = order.ToDo();
             if (user.IsSuccess && user.Value != null)
             {
-                orderResponse = orderResponse with { Email = user.Value.Data.Email, UserName = user.Value.Data.Name };
+                orderResponse = orderResponse with { Email = user.Value.Data.Email, UserName = user.Value.Data.PersonName };
             }
 
             // Enrich order items with product information
@@ -166,7 +176,7 @@ namespace eCommerce.BusinessLogicLayer.Services
                 
                 if (user.IsSuccess && user.Value != null)
                 {
-                    orderResponse = orderResponse with { Email = user.Value.Data.Email, UserName = user.Value.Data.Name };
+                    orderResponse = orderResponse with { Email = user.Value.Data.Email, UserName = user.Value.Data.PersonName };
                 }
 
                 // Enrich order items with product information
@@ -206,7 +216,7 @@ namespace eCommerce.BusinessLogicLayer.Services
                 
                 if (user.IsSuccess && user.Value != null)
                 {
-                    orderResponse = orderResponse with { Email = user.Value.Data.Email, UserName = user.Value.Data.Name };
+                    orderResponse = orderResponse with { Email = user.Value.Data.Email, UserName = user.Value.Data.PersonName };
                 }
 
                 // Enrich order items with product information
@@ -309,7 +319,7 @@ namespace eCommerce.BusinessLogicLayer.Services
             
             await rabbitMqPublisher.Publish(headers, orderUpdatedMessage);
             
-            var orderResponse = updatedOrder.ToDo() with { Email = user.Value.Data.Email, UserName = user.Value.Data.Name };
+            var orderResponse = updatedOrder.ToDo() with { Email = user.Value.Data.Email, UserName = user.Value.Data.PersonName };
 
             // Enrich order items with product information
             var enrichedOrderItems = new List<OrderItemResponse>();

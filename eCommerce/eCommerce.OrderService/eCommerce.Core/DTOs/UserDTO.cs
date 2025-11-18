@@ -6,6 +6,6 @@ using System.Threading.Tasks;
 
 namespace eCommerce.BusinessLogicLayer.DTOs
 {
-    public record UserDTO(Guid UserID, string? Email, string? Name, string Gender);
+    public record UserDTO(Guid UserID, string? Email, string? PersonName, string Gender);
 
 }

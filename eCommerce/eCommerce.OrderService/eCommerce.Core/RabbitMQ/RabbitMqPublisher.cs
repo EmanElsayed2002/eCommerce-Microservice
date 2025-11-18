@@ -84,10 +84,32 @@ namespace eCommerce.BusinessLogicLayer.RabbitMQ
             string routingKey = Environment.GetEnvironmentVariable("RabbitMQ_RoutingKey") 
                 ?? configuration["RabbitMQ_RoutingKey"] 
                 ?? throw new InvalidOperationException("RabbitMQ_RoutingKey configuration is missing. Set RabbitMQ_RoutingKey environment variable or in appsettings.json");
-            
-            await _channel.BasicPublishAsync(exchange: exchange,
-                                            routingKey: routingKey,
-                                            body: messageBodyInByes);
+
+            string _queue = Environment.GetEnvironmentVariable("RabbitMQ_Queue")
+                 ?? configuration["RabbitMQ_Queue"]
+                 ?? "order.Queue";
+            await _channel.ExchangeDeclareAsync(exchange,ExchangeType.Headers, durable: true,
+                autoDelete: false,
+                arguments: null);
+
+            await _channel.QueueDeclareAsync(queue: _queue, durable: true, exclusive: false,
+              autoDelete: false,
+              arguments: null);
+
+            await _channel.QueueBindAsync(
+                 queue: _queue,
+                 exchange: exchange,
+                 routingKey: ""
+
+             );
+
+
+
+            await _channel.BasicPublishAsync(
+              exchange: exchange,
+              routingKey: string.Empty,
+              mandatory: false,
+              body: messageBodyInByes);
         }
         
         public void Dispose()
