@@ -29,7 +29,7 @@ namespace eCommerce.BusinessLogicLayer.Services
                 return Result.Fail(erros);
             }
             var res = await _repo.AddProduct(product.ToDo());
-            if (res.IsFailed) return Result.Fail("Can not add Product");
+            if (res.IsFailed) return Result.Fail(res.Errors);
             return Result.Ok(res.Value);
         }
         //

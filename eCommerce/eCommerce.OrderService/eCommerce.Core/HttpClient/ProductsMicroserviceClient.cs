@@ -41,7 +41,7 @@ namespace eCommerce.BusinessLogicLayer.HttpClientt
                     return Result.Ok(res);
                 }
 
-                HttpResponseMessage response = await _httpClient.GetAsync($"/gateway/products/search/product-id/{productID}");
+                HttpResponseMessage response = await _httpClient.GetAsync($"/api/products/search/product-id/{productID}");
                 if (!response.IsSuccessStatusCode)
                 {
                     return Result.Fail("Can not make communication with product microservice");

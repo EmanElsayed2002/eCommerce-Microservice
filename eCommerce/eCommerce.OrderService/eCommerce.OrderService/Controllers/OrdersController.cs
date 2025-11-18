@@ -15,14 +15,14 @@ namespace eCommerce.API.Controllers
     public class OrdersController(IOrderService _ordersService) : ControllerBase
     {
 
-       
+        public record GetPaginated(int pageNumber = 1, int pageSize = 10);
 
 
         //GET: /api/Orders
         [HttpGet]
-        public async Task<IActionResult> Get()
+        public async Task<IActionResult> Get(GetPaginated request)
         {
-            return (await _ordersService.GetOrders()).ResolveToIActionResult(successStatusCode: StatusCodes.Status200OK, context: HttpContext, "Successfully Geting Orders");
+            return (await _ordersService.GetOrders(request.pageNumber , request.pageSize)).ResolveToIActionResult(successStatusCode: StatusCodes.Status200OK, context: HttpContext, "Successfully Geting Orders");
         }
 
 
@@ -40,37 +40,37 @@ namespace eCommerce.API.Controllers
 
         //GET: /api/Orders/search/productid/{productID}
         [HttpGet("search/productid/{productID}")]
-        public async Task<IActionResult> GetOrdersByProductID(Guid productID)
+        public async Task<IActionResult> GetOrdersByProductID(Guid productID  , GetPaginated request)
         {
             FilterDefinition<Order> filter = Builders<Order>.Filter.ElemMatch(temp => temp.OrderItems,
               Builders<OrderItem>.Filter.Eq(tempProduct => tempProduct.ProductID, productID)
               );
            
-            return (await _ordersService.GetOrdersByCondition(filter)).ResolveToIActionResult(successStatusCode: StatusCodes.Status200OK, context: HttpContext, "Successfully Geting Orders");
+            return (await _ordersService.GetOrdersByCondition(filter , request.pageNumber, request.pageSize)).ResolveToIActionResult(successStatusCode: StatusCodes.Status200OK, context: HttpContext, "Successfully Geting Orders");
 
         }
 
 
         //GET: /api/Orders/search/orderDate/{orderDate}
         [HttpGet("search/orderDate/{orderDate}")]
-        public async Task<IActionResult> GetOrdersByOrderDate(DateTime orderDate)
+        public async Task<IActionResult> GetOrdersByOrderDate(DateTime orderDate , GetPaginated request)
         {
             FilterDefinition<Order> filter = Builders<Order>.Filter.Eq(temp => temp.OrderDate.ToString("yyyy-MM-dd"), orderDate.ToString("yyyy-MM-dd")
               );
 
             
-            return (await _ordersService.GetOrdersByCondition(filter)).ResolveToIActionResult(successStatusCode: StatusCodes.Status200OK, context: HttpContext, "Successfully Geting Orders");
+            return (await _ordersService.GetOrdersByCondition(filter , request.pageNumber, request.pageSize)).ResolveToIActionResult(successStatusCode: StatusCodes.Status200OK, context: HttpContext, "Successfully Geting Orders");
 
         }
 
 
         //GET: /api/Orders/search/userid/{userID}
         [HttpGet("search/userid/{userID}")]
-        public async Task<IActionResult> GetOrdersByUserID(Guid userID)
+        public async Task<IActionResult> GetOrdersByUserID(Guid userID , GetPaginated request)
         {
             FilterDefinition<Order> filter = Builders<Order>.Filter.Eq(temp => temp.UserID, userID);
 
-            return (await _ordersService.GetOrdersByCondition(filter)).ResolveToIActionResult(successStatusCode: StatusCodes.Status200OK, context: HttpContext, "Successfully Geting Orders");
+            return (await _ordersService.GetOrdersByCondition(filter , request.pageNumber, request.pageSize)).ResolveToIActionResult(successStatusCode: StatusCodes.Status200OK, context: HttpContext, "Successfully Geting Orders");
 
         }
 

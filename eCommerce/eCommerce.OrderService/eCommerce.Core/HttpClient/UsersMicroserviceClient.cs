@@ -37,7 +37,7 @@ namespace eCommerce.BusinessLogicLayer.HttpClientt
                     return Result.Ok(user);
                 }
 
-                HttpResponseMessage response = await _httpClient.GetAsync($"/gateway/users/{UserID}");
+                HttpResponseMessage response = await _httpClient.GetAsync($"/api/User/{UserID}");
                 if (!response.IsSuccessStatusCode)
                 {
                     return Result.Fail("can not get user microservice");

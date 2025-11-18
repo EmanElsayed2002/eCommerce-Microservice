@@ -21,6 +21,10 @@ builder.Services.AddBusinessLogicLayer(builder.Configuration);
 
 builder.Services.AddFluentValidationAutoValidation();
 builder.Services.AddValidatorsFromAssemblyContaining<OrderAddRequestValidator>();
+
+builder.Services.AddSwaggerGen();
+builder.Services.AddDistributedMemoryCache();
+
 ConfigureHttpClientsWithPolicies(builder.Services, builder.Configuration);
 void ConfigureHttpClientsWithPolicies(IServiceCollection services, IConfiguration configuration)
 {
@@ -28,7 +32,7 @@ void ConfigureHttpClientsWithPolicies(IServiceCollection services, IConfiguratio
     {
         var gatewayUrl = Environment.GetEnvironmentVariable("GatewayBaseUrl")
             ?? configuration["GatewayBaseUrl"]
-            ?? "http://apigateway:8080";
+            ?? "https://localhost:7252/";
         client.BaseAddress = new Uri(gatewayUrl);
         client.Timeout = TimeSpan.FromSeconds(30);
     })
@@ -47,7 +51,7 @@ void ConfigureHttpClientsWithPolicies(IServiceCollection services, IConfiguratio
     {
         var gatewayUrl = Environment.GetEnvironmentVariable("GatewayBaseUrl")
             ?? configuration["GatewayBaseUrl"]
-            ?? "http://apigateway:8080";
+            ?? "https://localhost:7155/";
         client.BaseAddress = new Uri(gatewayUrl);
         client.Timeout = TimeSpan.FromSeconds(30);
     })
@@ -66,7 +70,8 @@ if (app.Environment.IsDevelopment())
 {
     app.MapOpenApi();
 }
-
+app.UseSwagger();
+app.UseSwaggerUI();
 app.UseHttpsRedirection();
 
 app.UseAuthorization();

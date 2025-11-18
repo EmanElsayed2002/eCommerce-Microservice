@@ -14,7 +14,6 @@
 		<PackageReference Include="MongoDB.Driver.Core" Version="2.30.0" />
 	</ItemGroup>
 	<ItemGroup>
-	  <ProjectReference Include="..\..\eCommerce.ProductService\eCommerce.Domain\eCommerce.Domain.csproj" />
 	  <ProjectReference Include="..\..\eCommerce.Shared\eCommerce.Shared\eCommerce.Shared.csproj" />
 	  <ProjectReference Include="..\eCommerce.Domain\eCommerce.Domain.csproj" />
 	</ItemGroup>
