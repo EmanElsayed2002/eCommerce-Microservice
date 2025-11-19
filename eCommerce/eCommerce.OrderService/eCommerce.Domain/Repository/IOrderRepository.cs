@@ -24,7 +24,5 @@ namespace eCommerce.DataAccessLayer.Repository
         Task<Result<Order>> AddOrder(Order order);
         Task<Result<Order>> UpdateOrder(Order order);
         Task<Result<Order>> DeleteOrder(Guid orderId);
-
-
     }
 }

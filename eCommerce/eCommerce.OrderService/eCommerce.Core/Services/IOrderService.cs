@@ -23,7 +23,5 @@ namespace eCommerce.BusinessLogicLayer.Services
         Task<Result<OrderResponse>> AddOrder(OrderAddRequest request);
         Task<Result<OrderResponse>> UpdateOrder(OrderUpdateRequest request);
         Task<Result<bool>> Delete(Guid requestId);
-
-
     }
 }

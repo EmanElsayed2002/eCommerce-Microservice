@@ -102,5 +102,34 @@ namespace eCommerce.DataAccessLayer.Repository
                 return Result.Fail<Product>(ex.Message);
             }
         }
+        public async Task<Result<bool>> UpdateProductStock(Guid productId, int quantityChange)
+        {
+            var product = await _context.Products.FirstOrDefaultAsync(p => p.ID == productId);
+            if (product == null)
+            {
+                return Result.Fail<bool>("Product not found");
+            }
+
+            try
+            {
+                // If Quantity is null, treat it as 0
+                int currentStock = product.Quantity ?? 0;
+                int newStock = currentStock + quantityChange;
+
+                // Prevent negative stock
+                if (newStock < 0)
+                {
+                    return Result.Fail<bool>($"Insufficient stock. Available: {currentStock}, Requested: {Math.Abs(quantityChange)}");
+                }
+
+                product.Quantity = newStock;
+                await _context.SaveChangesAsync();
+                return Result.Ok(true);
+            }
+            catch (Exception ex)
+            {
+                return Result.Fail<bool>(ex.Message);
+            }
+        }
     }
 }

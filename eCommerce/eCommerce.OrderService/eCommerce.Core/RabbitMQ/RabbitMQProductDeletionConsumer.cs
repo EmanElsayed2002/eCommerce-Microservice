@@ -1,12 +1,18 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Text;
 using System.Text.Json;
 using System.Threading.Tasks;
 
+using eCommerce.DataAccessLayer.Entities;
+using eCommerce.DataAccessLayer.Repository;
+
 using Microsoft.Extensions.Caching.Distributed;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
+
+using MongoDB.Driver;
 
 using RabbitMQ.Client;
 using RabbitMQ.Client.Events;
@@ -20,11 +26,13 @@ namespace eCommerce.BusinessLogicLayer.RabbitMQ
         private readonly IConnection _connection;
         private readonly ILogger<RabbitMQProductDeletionConsumer> _logger;
         private readonly IDistributedCache _cache;
+        private readonly IOrderRepository _orderRepository;
 
         public RabbitMQProductDeletionConsumer(
             IConfiguration configuration, 
             ILogger<RabbitMQProductDeletionConsumer> logger, 
-            IDistributedCache cache)
+            IDistributedCache cache,
+            IOrderRepository orderRepository)
         {
             _configuration = configuration;
             
@@ -46,6 +54,7 @@ namespace eCommerce.BusinessLogicLayer.RabbitMQ
 
             _logger = logger;
             _cache = cache;
+            _orderRepository = orderRepository;
 
             ConnectionFactory connectionFactory = new ConnectionFactory()
             {
@@ -86,18 +95,38 @@ namespace eCommerce.BusinessLogicLayer.RabbitMQ
 
             consumer.ReceivedAsync += async (sender, args) =>
             {
-                byte[] body = args.Body.ToArray();
-                string message = Encoding.UTF8.GetString(body);
-
-                if (message != null)
+                try
                 {
-                    ProductDeletionMessage? productDeletionMessage = JsonSerializer.Deserialize<ProductDeletionMessage>(message);
+                    byte[] body = args.Body.ToArray();
+                    string message = Encoding.UTF8.GetString(body);
 
-                    if (productDeletionMessage != null)
+                    _logger.LogInformation("Received product deletion message: {Message}", message);
+
+                    if (!string.IsNullOrWhiteSpace(message))
                     {
-                        _logger.LogInformation($"Product deleted: {productDeletionMessage.ProductID}, Product name: {productDeletionMessage.ProductName}");
-                        await HandleProductDeletion(productDeletionMessage.ProductID);
+                        var options = new JsonSerializerOptions
+                        {
+                            PropertyNameCaseInsensitive = true
+                        };
+
+                        ProductDeleteMessage? productDeleteMessage = JsonSerializer.Deserialize<ProductDeleteMessage>(message, options);
+
+                        if (productDeleteMessage != null)
+                        {
+                            _logger.LogInformation("Product deletion event received: ProductId={ProductId}, ProductName={ProductName}", 
+                                productDeleteMessage.ProductId, 
+                                productDeleteMessage.ProductName);
+                            await HandleProductDeletion(productDeleteMessage.ProductId);
+                        }
+                        else
+                        {
+                            _logger.LogWarning("Failed to deserialize product deletion message");
+                        }
                     }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Error processing product deletion message: {Error}", ex.Message);
                 }
             };
 
@@ -106,11 +135,62 @@ namespace eCommerce.BusinessLogicLayer.RabbitMQ
 
         private async Task HandleProductDeletion(Guid productID)
         {
+            _logger.LogInformation("Processing product deletion: ProductId={ProductId}", productID);
+
+            // Find all orders containing this product
+            var filter = Builders<Order>.Filter.ElemMatch(
+                o => o.OrderItems,
+                Builders<OrderItem>.Filter.Eq(oi => oi.ProductID, productID)
+            );
+
+            var ordersResult = await _orderRepository.GetOrdersByFilter(filter, 1, 1000);
+            
+            if (ordersResult.IsSuccess && ordersResult.Value != null)
+            {
+                var orders = ordersResult.Value.Items;
+                _logger.LogInformation("Found {Count} orders containing deleted product {ProductId}", 
+                    orders.Count, 
+                    productID);
+
+                foreach (var order in orders)
+                {
+                    // Remove order items with the deleted product
+                    var itemsToRemove = order.OrderItems.Where(oi => oi.ProductID == productID).ToList();
+                    
+                    if (itemsToRemove.Any())
+                    {
+                        foreach (var item in itemsToRemove)
+                        {
+                            order.OrderItems.Remove(item);
+                        }
+
+                        // Recalculate total bill
+                        order.TotalBill = order.OrderItems.Sum(oi => oi.TotalPrice);
+
+                        var updateResult = await _orderRepository.UpdateOrder(order);
+                        if (updateResult.IsSuccess)
+                        {
+                            _logger.LogInformation("Removed {Count} order items from order {OrderId} for deleted product {ProductId}. New total: {TotalBill}", 
+                                itemsToRemove.Count, 
+                                order.OrderID, 
+                                productID,
+                                order.TotalBill);
+                        }
+                        else
+                        {
+                            _logger.LogWarning("Failed to update order {OrderId}: {Errors}", 
+                                order.OrderID, 
+                                string.Join(", ", updateResult.Errors));
+                        }
+                    }
+                }
+            }
+
             // Remove product from cache when it's deleted
             // Note: Cache key format matches ProductsMicroserviceClient: "product: {productID}"
             string cacheKeyToWrite = $"product: {productID}";
             await _cache.RemoveAsync(cacheKeyToWrite);
-            _logger.LogInformation($"Removed product {productID} from cache");
+            _logger.LogInformation("Removed product {ProductId} from cache", productID);
         }
 
         public void Dispose()

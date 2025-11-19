@@ -77,9 +77,11 @@ namespace eCommerce.BusinessLogicLayer.RabbitMQ
             string messageJson = JsonSerializer.Serialize(message);
             byte[] messageBodyInByes = Encoding.UTF8.GetBytes(messageJson);
 
-            string exchange = Environment.GetEnvironmentVariable("RabbitMQ_Exchange")
+            string exchange = Environment.GetEnvironmentVariable("RabbitMQ_Products_Exchange")
+                ?? Environment.GetEnvironmentVariable("RabbitMQ_Exchange")
+                ?? configuration["RabbitMQ_Products_Exchange"]
                 ?? configuration["RabbitMQ_Exchange"]
-                ?? "my-exchange";
+                ?? "product.exchange";
 
             string _queue = Environment.GetEnvironmentVariable("RabbitMQ_Queue")
                    ?? configuration["RabbitMQ_Queue"]
@@ -87,30 +89,25 @@ namespace eCommerce.BusinessLogicLayer.RabbitMQ
 
 
             await _channel.ExchangeDeclareAsync(
-                exchange: exchange, 
-                type: ExchangeType.Headers, 
-                durable: true, 
-                autoDelete: false, 
-                arguments: null);
+                 exchange: exchange,
+                 type: ExchangeType.Headers,
+                 durable: true,
+                 autoDelete: false,
+                 arguments: null);
 
-            await _channel.QueueDeclareAsync(queue: _queue, durable: true, exclusive: false,
-                autoDelete: false,
-                arguments: null);
-
-           await _channel.QueueBindAsync(
-                queue: _queue,
-                exchange: exchange,
-                routingKey: ""
-                
-            );
-
+            var properties = new BasicProperties
+            {
+                Persistent = true,
+                ContentType = "application/json",
+                Headers = headers ?? new Dictionary<string, object>()
+            };
 
             await _channel.BasicPublishAsync(
                 exchange: exchange,
-                routingKey: string.Empty, 
+                routingKey: string.Empty,
                 mandatory: false,
+                basicProperties: properties,
                 body: messageBodyInByes);
-
 
         }
         public void Dispose()

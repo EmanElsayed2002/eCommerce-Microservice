@@ -1,14 +1,19 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Text;
 using System.Text.Json;
 using System.Threading.Tasks;
 
 using eCommerce.BusinessLogicLayer.DTOs;
+using eCommerce.DataAccessLayer.Entities;
+using eCommerce.DataAccessLayer.Repository;
 
 using Microsoft.Extensions.Caching.Distributed;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
+
+using MongoDB.Driver;
 
 using RabbitMQ.Client;
 using RabbitMQ.Client.Events;
@@ -22,11 +27,13 @@ namespace eCommerce.BusinessLogicLayer.RabbitMQ
         private readonly IConnection _connection;
         private readonly ILogger<RabbitMQProductNameUpdateConsumer> _logger;
         private readonly IDistributedCache _cache;
+        private readonly IOrderRepository _orderRepository;
 
         public RabbitMQProductNameUpdateConsumer(
             IConfiguration configuration, 
             ILogger<RabbitMQProductNameUpdateConsumer> logger, 
-            IDistributedCache cache)
+            IDistributedCache cache,
+            IOrderRepository orderRepository)
         {
             _configuration = configuration;
             
@@ -48,6 +55,7 @@ namespace eCommerce.BusinessLogicLayer.RabbitMQ
 
             _logger = logger;
             _cache = cache;
+            _orderRepository = orderRepository;
 
             ConnectionFactory connectionFactory = new ConnectionFactory()
             {
@@ -88,36 +96,108 @@ namespace eCommerce.BusinessLogicLayer.RabbitMQ
 
             consumer.ReceivedAsync += async (sender, args) =>
             {
-                byte[] body = args.Body.ToArray();
-                string message = Encoding.UTF8.GetString(body);
-
-                if (message != null)
+                try
                 {
-                    ProductDTO? productDTO = JsonSerializer.Deserialize<ProductDTO>(message);
+                    byte[] body = args.Body.ToArray();
+                    string message = Encoding.UTF8.GetString(body);
 
-                    if (productDTO != null)
+                    _logger.LogInformation("Received product update message: {Message}", message);
+
+                    if (!string.IsNullOrWhiteSpace(message))
                     {
-                        await HandleProductUpdation(productDTO);
+                        var options = new JsonSerializerOptions
+                        {
+                            PropertyNameCaseInsensitive = true
+                        };
+
+                        ProductUpdateMessage? productUpdateMessage = JsonSerializer.Deserialize<ProductUpdateMessage>(message, options);
+
+                        if (productUpdateMessage != null)
+                        {
+                            _logger.LogInformation("Product update event received: ProductId={ProductId}, NewName={NewName}", 
+                                productUpdateMessage.ProductId, 
+                                productUpdateMessage.NewName);
+                            await HandleProductUpdation(productUpdateMessage);
+                        }
+                        else
+                        {
+                            _logger.LogWarning("Failed to deserialize product update message");
+                        }
                     }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Error processing product update message: {Error}", ex.Message);
                 }
             };
 
            await _channel.BasicConsumeAsync(queue: queueName, consumer: consumer, autoAck: true);
         }
 
-        private async Task HandleProductUpdation(ProductDTO productDTO)
+        private async Task HandleProductUpdation(ProductUpdateMessage productUpdateMessage)
         {
-            _logger.LogInformation($"Product name updated: {productDTO.ProductID}, New name: {productDTO.ProductName}");
+            _logger.LogInformation("Processing product name update: ProductId={ProductId}, NewName={NewName}", 
+                productUpdateMessage.ProductId, 
+                productUpdateMessage.NewName);
+
+            // Find all orders containing this product
+            var filter = Builders<Order>.Filter.ElemMatch(
+                o => o.OrderItems,
+                Builders<OrderItem>.Filter.Eq(oi => oi.ProductID, productUpdateMessage.ProductId)
+            );
+
+            var ordersResult = await _orderRepository.GetOrdersByFilter(filter, 1, 1000);
+            
+            if (ordersResult.IsSuccess && ordersResult.Value != null)
+            {
+                var orders = ordersResult.Value.Items;
+                _logger.LogInformation("Found {Count} orders containing product {ProductId}", 
+                    orders.Count, 
+                    productUpdateMessage.ProductId);
+
+                foreach (var order in orders)
+                {
+                    bool updated = false;
+                    foreach (var orderItem in order.OrderItems)
+                    {
+                        if (orderItem.ProductID == productUpdateMessage.ProductId)
+                        {
+                            if (!string.IsNullOrWhiteSpace(productUpdateMessage.NewName))
+                            {
+                                orderItem.ProductName = productUpdateMessage.NewName;
+                                updated = true;
+                            }
+                        }
+                    }
+
+                    if (updated)
+                    {
+                        var updateResult = await _orderRepository.UpdateOrder(order);
+                        if (updateResult.IsSuccess)
+                        {
+                            _logger.LogInformation("Updated order {OrderId} with new product name for product {ProductId}", 
+                                order.OrderID, 
+                                productUpdateMessage.ProductId);
+                        }
+                        else
+                        {
+                            _logger.LogWarning("Failed to update order {OrderId}: {Errors}", 
+                                order.OrderID, 
+                                string.Join(", ", updateResult.Errors));
+                        }
+                    }
+                }
+            }
 
             // Update cache with new product information
             // Note: Cache key format matches ProductsMicroserviceClient: "product: {productID}"
-            string productJson = JsonSerializer.Serialize(productDTO);
-            DistributedCacheEntryOptions options = new DistributedCacheEntryOptions()
-                .SetAbsoluteExpiration(TimeSpan.FromSeconds(300));
-
-            string cacheKeyToWrite = $"product: {productDTO.ProductID}";
-            await _cache.SetStringAsync(cacheKeyToWrite, productJson, options);
-            _logger.LogInformation($"Updated product {productDTO.ProductID} in cache");
+            if (!string.IsNullOrWhiteSpace(productUpdateMessage.NewName))
+            {
+                string cacheKeyToWrite = $"product: {productUpdateMessage.ProductId}";
+                await _cache.RemoveAsync(cacheKeyToWrite);
+                _logger.LogInformation("Removed product {ProductId} from cache (will be refreshed on next request)", 
+                    productUpdateMessage.ProductId);
+            }
         }
 
         public void Dispose()

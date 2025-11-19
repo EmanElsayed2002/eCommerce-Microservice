@@ -117,17 +117,25 @@ namespace eCommerce.BusinessLogicLayer.Services
             var res = await _repo.UpdateProduct(product.ToDo());
             if (res.IsSuccess)
             {
-                ProductUpdateMessage productDeleteMessage = new ProductUpdateMessage(res.Value.ID, product?.Name);
+                ProductUpdateMessage productUpdateMessage = new ProductUpdateMessage(res.Value.ID, product?.Name);
                
                 var headers = new Dictionary<string, object>()
                 {
                     {"event", "product.update" },
                     {"RowCount" , 1 }
                 };
-                await _rabbitMqPublisher.Publish(headers, productDeleteMessage);
+                
+                await _rabbitMqPublisher.Publish(headers, productUpdateMessage);
                 return Result.Ok(product.ToDo());
             }
             return Result.Fail("Can not Update the Product");
+        }
+
+        public async Task<Result<bool>> UpdateProductStock(Guid productId, int quantityChange)
+        {
+            var product = await _repo.UpdateProductStock(productId, quantityChange);
+            if (product.IsSuccess) return Result.Ok();
+            return Result.Fail(product.Errors);
         }
     }
 }

@@ -27,9 +27,9 @@ namespace eCommerce.BusinessLogicLayer
             services.AddScoped<ProductsMicroserviceClient>();
             services.AddScoped<UsersMicroserviceClient>();
             
-            // Register RabbitMQ Consumers (Singleton - they run continuously)
-            services.AddSingleton<IRabbitMQProductDeletionConsumer, RabbitMQProductDeletionConsumer>();
-            services.AddSingleton<IRabbitMQProductNameUpdateConsumer, RabbitMQProductNameUpdateConsumer>();
+            // Register RabbitMQ Consumers (Scoped - they need access to scoped services like repositories)
+            services.AddScoped<IRabbitMQProductDeletionConsumer, RabbitMQProductDeletionConsumer>();
+            services.AddScoped<IRabbitMQProductNameUpdateConsumer, RabbitMQProductNameUpdateConsumer>();
             
             // Register Hosted Services to start consumers when application starts
             services.AddHostedService<RabbitMQProductDeletionHostedService>();

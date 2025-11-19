@@ -1,3 +1,4 @@
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 
 namespace eCommerce.BusinessLogicLayer.RabbitMQ;
@@ -5,21 +6,27 @@ namespace eCommerce.BusinessLogicLayer.RabbitMQ;
 public class RabbitMQProductDeletionHostedService : IHostedService
 {
     private readonly IRabbitMQProductDeletionConsumer _productDeletionConsumer;
-
-    public RabbitMQProductDeletionHostedService(IRabbitMQProductDeletionConsumer consumer)
+    private readonly  IServiceScopeFactory _scopeFactory;
+    private  IServiceScope? _scope;
+   private IRabbitMQProductDeletionConsumer _consumer;
+    public RabbitMQProductDeletionHostedService( IServiceScopeFactory scopeFactory)
     {
-        _productDeletionConsumer = consumer;
+        _scopeFactory = scopeFactory;
     }
 
     public Task StartAsync(CancellationToken cancellationToken)
     {
-        _productDeletionConsumer.Consume();
+        _scope = _scopeFactory.CreateScope();
+        _consumer = _scope.ServiceProvider.GetRequiredService<IRabbitMQProductDeletionConsumer>();
+        _ = _consumer.Consume();
         return Task.CompletedTask;
+     
     }
 
     public Task StopAsync(CancellationToken cancellationToken)
     {
-        _productDeletionConsumer.Dispose();
+        _consumer?.Dispose();
+        _scope?.Dispose();
         return Task.CompletedTask;
     }
 }

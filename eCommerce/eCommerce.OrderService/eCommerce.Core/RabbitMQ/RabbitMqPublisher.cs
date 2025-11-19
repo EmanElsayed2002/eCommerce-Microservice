@@ -76,40 +76,34 @@ namespace eCommerce.BusinessLogicLayer.RabbitMQ
         {
             string messageJson = JsonSerializer.Serialize(message);
             byte[] messageBodyInByes = Encoding.UTF8.GetBytes(messageJson);
-            
-            string exchange = Environment.GetEnvironmentVariable("RabbitMQ_Exchange") 
-                ?? configuration["RabbitMQ_Exchange"] 
-                ?? throw new InvalidOperationException("RabbitMQ_Exchange configuration is missing. Set RabbitMQ_Exchange environment variable or in appsettings.json");
-            
-            string routingKey = Environment.GetEnvironmentVariable("RabbitMQ_RoutingKey") 
-                ?? configuration["RabbitMQ_RoutingKey"] 
-                ?? throw new InvalidOperationException("RabbitMQ_RoutingKey configuration is missing. Set RabbitMQ_RoutingKey environment variable or in appsettings.json");
 
-            string _queue = Environment.GetEnvironmentVariable("RabbitMQ_Queue")
-                 ?? configuration["RabbitMQ_Queue"]
-                 ?? "order.Queue";
-            await _channel.ExchangeDeclareAsync(exchange,ExchangeType.Headers, durable: true,
+            string exchange =
+                Environment.GetEnvironmentVariable("RabbitMQ_Orders_Exchange")
+                ?? Environment.GetEnvironmentVariable("RabbitMQ_Exchange")
+                ?? configuration["RabbitMQ_Orders_Exchange"]
+                ?? configuration["RabbitMQ_Exchange"]
+                ?? "order.exchange";
+
+            await _channel.ExchangeDeclareAsync(
+                exchange: exchange,
+                type: ExchangeType.Headers,
+                durable: true,
                 autoDelete: false,
                 arguments: null);
 
-            await _channel.QueueDeclareAsync(queue: _queue, durable: true, exclusive: false,
-              autoDelete: false,
-              arguments: null);
-
-            await _channel.QueueBindAsync(
-                 queue: _queue,
-                 exchange: exchange,
-                 routingKey: ""
-
-             );
-
-
+            var properties = new BasicProperties
+            {
+                Persistent = true,
+                ContentType = "application/json",
+                Headers = headers ?? new Dictionary<string, object>()
+            };
 
             await _channel.BasicPublishAsync(
-              exchange: exchange,
-              routingKey: string.Empty,
-              mandatory: false,
-              body: messageBodyInByes);
+                exchange: exchange,
+                routingKey: string.Empty,
+                mandatory: false,
+                basicProperties: properties,
+                body: messageBodyInByes);
         }
         
         public void Dispose()

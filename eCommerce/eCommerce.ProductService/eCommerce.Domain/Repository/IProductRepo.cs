@@ -20,5 +20,6 @@ namespace eCommerce.DataAccessLayer.Repository
         Task<Result<Product>> AddProduct(Product product);
         Task<Result<Product>> UpdateProduct(Product product);
         Task<Result<bool>> DeleteProduct(Guid id);
+        Task<Result<bool>> UpdateProductStock(Guid productId, int quantityChange);
     }
 }

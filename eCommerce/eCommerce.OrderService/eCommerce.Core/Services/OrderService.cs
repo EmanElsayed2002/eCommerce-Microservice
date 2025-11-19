@@ -21,6 +21,7 @@ using FluentValidation;
 
 using Microsoft.Extensions.Logging;
 
+using MongoDB.Bson;
 using MongoDB.Driver;
 
 namespace eCommerce.BusinessLogicLayer.Services
@@ -80,11 +81,16 @@ namespace eCommerce.BusinessLogicLayer.Services
             if (res.IsSuccess)
             {
                 // Publish order created event to RabbitMQ
+                var orderItemMessages = res.Value.OrderItems?
+                    .Select(oi => new OrderItemMessage(oi.ProductID, oi.Quantity))
+                    .ToList() ?? new List<OrderItemMessage>();
+
                 var orderCreatedMessage = new OrderCreatedMessage(
                     res.Value.OrderID,
                     res.Value.UserID,
                     res.Value.TotalBill,
-                    res.Value.OrderDate
+                    res.Value.OrderDate,
+                    orderItemMessages
                 );
                 
                 var headers = new Dictionary<string, object>()
@@ -106,9 +112,14 @@ namespace eCommerce.BusinessLogicLayer.Services
             if (result.IsSuccess)
             {
                 // Publish order deleted event to RabbitMQ
+                var orderItemMessages = result.Value.OrderItems?
+                    .Select(oi => new OrderItemMessage(oi.ProductID, oi.Quantity))
+                    .ToList() ?? new List<OrderItemMessage>();
+
                 var orderDeletedMessage = new OrderDeletedMessage(
                     result.Value.OrderID,
-                    result.Value.UserID
+                    result.Value.UserID,
+                    orderItemMessages
                 );
                 
                 var headers = new Dictionary<string, object>()
@@ -249,6 +260,7 @@ namespace eCommerce.BusinessLogicLayer.Services
             }
 
             // Validate order items
+            List<ProductDTO> products = new List<ProductDTO>();
             foreach (var item in request.OrderItems)
             {
                 var itemValidator = await orderItemUpdateValidator.ValidateAsync(item);
@@ -260,10 +272,16 @@ namespace eCommerce.BusinessLogicLayer.Services
                 
                 // Check if product exists
                 var product = await productsMicroserviceClient.GetProductByID(item.ProductID);
+
+
+                
                 if (product == null || !product.IsSuccess)
                 {
                     return Result.Fail($"Invalid ProductID: {item.ProductID}");
                 }
+
+
+                products.Add(product.Value.Data);
             }
 
             // Check if user exists
@@ -287,6 +305,13 @@ namespace eCommerce.BusinessLogicLayer.Services
             // Calculate total bill
             foreach (var orderItem in orderInput.OrderItems)
             {
+
+
+
+                var p = products.FirstOrDefault(x => x.ProductID == orderItem.ProductID);
+                orderItem.UnitPrice = p.UnitPrice;
+                orderItem.Category = p.Category;
+                orderItem.ProductName = p.ProductName;
                 orderItem.TotalPrice = orderItem.Quantity * orderItem.UnitPrice;
                 if (orderItem._id == Guid.Empty)
                 {
@@ -302,40 +327,76 @@ namespace eCommerce.BusinessLogicLayer.Services
             }
 
             var updatedOrder = updateResult.Value;
+
+            var existingQuantities = existingOrder.OrderItems
+                .GroupBy(i => i.ProductID)
+                .ToDictionary(g => g.Key, g => g.Sum(x => x.Quantity));
+
+            var updatedQuantities = updatedOrder.OrderItems
+                .GroupBy(i => i.ProductID)
+                .ToDictionary(g => g.Key, g => g.Sum(x => x.Quantity));
+
+            var itemChanges = new List<OrderItemDeltaMessage>();
+            foreach (var productId in existingQuantities.Keys.Union(updatedQuantities.Keys))
+            {
+                var oldQty = existingQuantities.TryGetValue(productId, out var oQty) ? oQty : 0;
+                var newQty = updatedQuantities.TryGetValue(productId, out var nQty) ? nQty : 0;
+                var delta = newQty - oldQty;
+                if (delta != 0)
+                {
+                    itemChanges.Add(new OrderItemDeltaMessage(productId, delta));
+                    _logger.LogInformation("Order update: Product {ProductId} quantity changed from {OldQty} to {NewQty} (delta: {Delta})", 
+                        productId, oldQty, newQty, delta);
+                }
+            }
             
             // Publish order updated event to RabbitMQ
-            var orderUpdatedMessage = new OrderUpdatedMessage(
-                updatedOrder.OrderID,
-                updatedOrder.UserID,
-                updatedOrder.TotalBill,
-                updatedOrder.OrderDate
-            );
-            
-            var headers = new Dictionary<string, object>()
+            if (itemChanges.Count > 0)
             {
-                { "event", "order.updated" },
-                { "RowCount", 1 }
-            };
-            
-            await rabbitMqPublisher.Publish(headers, orderUpdatedMessage);
+                var orderUpdatedMessage = new OrderUpdatedMessage(
+                    updatedOrder.OrderID,
+                    updatedOrder.UserID,
+                    updatedOrder.TotalBill,
+                    updatedOrder.OrderDate,
+                    itemChanges);
+                
+                var headers = new Dictionary<string, object>()
+                {
+                    { "event", "order.updated" },
+                    { "RowCount", 1 }
+                };
+                
+                _logger.LogInformation("Publishing order.updated event for Order {OrderId} with {Count} item changes", 
+                    updatedOrder.OrderID, 
+                    itemChanges.Count);
+                
+                await rabbitMqPublisher.Publish(headers, orderUpdatedMessage);
+                
+                _logger.LogInformation("Successfully published order.updated event for Order {OrderId}", updatedOrder.OrderID);
+            }
+            else
+            {
+                _logger.LogInformation("No item quantity changes detected for Order {OrderId}, skipping RabbitMQ publish", updatedOrder.OrderID);
+            }
             
             var orderResponse = updatedOrder.ToDo() with { Email = user.Value.Data.Email, UserName = user.Value.Data.PersonName };
 
-            // Enrich order items with product information
-            var enrichedOrderItems = new List<OrderItemResponse>();
-            foreach (var item in updatedOrder.OrderItems)
-            {
-                var product = await productsMicroserviceClient.GetProductByID(item.ProductID);
-                var itemResponse = item.ToDo();
-                if (product.IsSuccess && product.Value != null)
-                {
-                    itemResponse = itemResponse with { ProductName = product.Value.Data.ProductName, Category = product.Value.Data.Category };
-                }
-                enrichedOrderItems.Add(itemResponse);
-            }
-            orderResponse = orderResponse with { OrderItems = enrichedOrderItems };
+            //// Enrich order items with product information
+            //var enrichedOrderItems = new List<OrderItemResponse>();
+            //foreach (var item in updatedOrder.OrderItems)
+            //{
+            //    var product = await productsMicroserviceClient.GetProductByID(item.ProductID);
+            //    var itemResponse = item.ToDo();
+            //    if (product.IsSuccess && product.Value != null)
+            //    {
+            //        itemResponse = itemResponse with { ProductName = product.Value.Data.ProductName, Category = product.Value.Data.Category };
+            //    }
+            //    enrichedOrderItems.Add(itemResponse);
+            //}
+            //orderResponse = orderResponse with { OrderItems = enrichedOrderItems };
 
             return Result.Ok(orderResponse);
         }
+
     }
 }
